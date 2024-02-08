@@ -77,7 +77,7 @@ class GeoDataLoader(Dataset):
         gps = self.coordinates[idx]
 
         image = im.open(img_path).convert('RGB')
-        
+
         if self.transform:
             image = self.transform(image)
 
