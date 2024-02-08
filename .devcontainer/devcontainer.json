@@ -1,32 +1,19 @@
 {
 	"name": "SnowCLIP",
-	"build": {
-		"dockerfile": "Dockerfile"
-	},
-	"runArgs": [
-		"--ipc",
-		"host",
-		"--gpus",
-		"all",
-		"--env-file",
-		".devcontainer/.devcontainer.env"
-	],
-	// --env-file .devcontainer.env loads environment variables from the .devcontainer.env file
-	// --ipc host allows the container to access the host's shared memory
-	"workspaceFolder": "/workspaces/SnowCLIP",
-	"mounts": [
-		"source=${localEnv:SOURCE_DATA},target=/workspaces/SnowCLIP/data,type=bind"
-	],
-	// Add the IDs of extensions you want installed when the container is created in the array below.
-	"customizations": {
-		"vscode": {
-			"extensions": [
+	"dockerComposeFile": "docker-compose.yaml",
+	"initializeCommand": "ls",
+    "service": "SnowCLIP",
+    "workspaceFolder": "/workspace",
+    "shutdownAction": "stopCompose",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+				"ms-toolsai.jupyter",
 				"GitHub.copilot",
 				"ms-python.python",
-				"ms-toolsai.jupyter",
-				"ms-vsliveshare.vsliveshare",
-				"ms-azuretools.vscode-docker"
+				"eamodio.gitlens",
+				"ms-vsliveshare.vsliveshare"
 			]
-		}
-	}
+        }
+    },
 }

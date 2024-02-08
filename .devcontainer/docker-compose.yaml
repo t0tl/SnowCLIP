@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  SnowCLIP:
+    image: snowclip:tim
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: SnowCLIP
+    volumes:
+      - /mnt/d/mappilary_street_level:/workspace/mappilary_street_level
+      - ../:/workspace
+    ports:
+      - "8888:8888"  # Adjust the port mapping as needed
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all  # Adjust GPU visibility as needed
+    command: "/bin/bash -c 'source /etc/bash.bashrc && tail -f /dev/null && /bin/bash'"  # Keep container running
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
