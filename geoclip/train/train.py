@@ -1,12 +1,13 @@
 import torch
 from tqdm import tqdm
+import torch.nn.functional as F
 
 def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch_size, device):
     print("Starting Epoch", epoch)
 
     bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
 
-    targets_img_gps = torch.Tensor([i for i in range(batch_size).to(device)]).long()
+    targets_img_gps = torch.Tensor([i for i in range(batch_size)]).to(device).double()
 
     for i, (imgs, gps) in bar:
         imgs = imgs.to(device)
@@ -23,7 +24,7 @@ def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch
         gps_features = F.normalize(gps_features, dim=1)
 
         # Append Queue
-        gps_features = model.append_gps_queue_features(gps_features)
+        gps_features = model.append_gps_queue_features(gps_features, gps)
 
         # Get the temperature
         temp = model.logit_scale.exp()
@@ -33,6 +34,7 @@ def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch
 
         # Compute the loss
         loss = 0
+        print(logits_img_gps.shape, targets_img_gps.shape)
         img_gps_loss = criterion(logits_img_gps, targets_img_gps)
         loss += img_gps_loss
 

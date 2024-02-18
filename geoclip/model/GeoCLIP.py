@@ -9,10 +9,13 @@ from .misc import load_gps_data, file_dir
 
 from PIL import Image
 from torchvision.transforms import ToPILImage
+import pdb
 
 class GeoCLIP(nn.Module):
-    def __init__(self, from_pretrained=True, queue_size=4096):
+    def __init__(self, batch_size: int, from_pretrained=True, queue_size=4096, device="cpu"):
         super().__init__()
+
+        self.batch_size = batch_size
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
         self.image_encoder = ImageEncoder()
         self.location_encoder = LocationEncoder()
@@ -24,7 +27,7 @@ class GeoCLIP(nn.Module):
             self.weights_folder = os.path.join(file_dir, "weights")
             self._load_weights()
 
-        self.device = "cpu"
+        self.device = device
 
     def to(self, device):
         self.device = device
@@ -42,7 +45,7 @@ class GeoCLIP(nn.Module):
         self.queue_size = queue_size
         self.register_buffer("gps_queue", torch.randn(2, self.queue_size))
         self.gps_queue = nn.functional.normalize(self.gps_queue, dim=0)
-        self.register_buffer("gps_queue_ptr", torch.zeros(1, dtype=torch.long))
+        self.register_buffer("gps_queue_ptr", torch.zeros(1, dtype=torch.int32))
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self, gps):
@@ -51,20 +54,23 @@ class GeoCLIP(nn.Module):
         Args:
             gps (torch.Tensor): GPS tensor of shape (batch_size, 2)
         """
-        opt = self.opt
+        #pdb.set_trace()
         gps_batch_size = gps.shape[0]
-        batch_size = opt.batch_size
+        batch_size = self.batch_size
 
         gps_ptr = int(self.gps_queue_ptr)
-        
+
         assert self.queue_size % batch_size == 0
 
         # Replace the GPS from ptr to ptr+batch_size (dequeue and enqueue)
+
+        # self.gps_queue.shape = (2, 4096)
+        # gps.t().shape = (2, 2)
         self.gps_queue[:, gps_ptr:gps_ptr + gps_batch_size] = gps.t()
         gps_ptr = (gps_ptr + batch_size) % self.queue_size  # move pointer
         self.gps_queue_ptr[0] = gps_ptr
 
-    def append_gps_queue_features(self, gps_features):
+    def append_gps_queue_features(self, gps_features, gps_coords):
         """ Compute the GPS queue features and append them to the given GPS features."""
 
         # Get the GPS queue features
@@ -76,7 +82,7 @@ class GeoCLIP(nn.Module):
         gps_features = torch.cat([gps_features, gps_queue_features], dim=0)
 
         # Update GPS queue
-        self._dequeue_and_enqueue(gps)
+        self._dequeue_and_enqueue(gps_coords)
 
         return gps_features
                                              
