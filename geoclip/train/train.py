@@ -16,26 +16,18 @@ def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch
         optimizer.zero_grad()
 
         # Forward pass
-        img_features = model.image_encoder(imgs)
+        img_features_view_1 = model.image_encoder(imgs[0])
+        img_features_view_2 = model.image_encoder(imgs[1])
         gps_features = model.location_encoder(gps)
-        
-        # Normalize the features
-        img_features = F.normalize(img_features, dim=1)
+
         gps_features = F.normalize(gps_features, dim=1)
 
         # Append Queue
-        gps_features = model.append_gps_queue_features(gps_features, gps)
+        gps_features_q = model.append_gps_queue_features(gps_features, gps)
 
-        # Get the temperature
-        temp = model.logit_scale.exp()
-
-        # Compute the logits
-        logits_img_gps = temp * (img_features @ gps_features.T)
-
-        # Compute the loss
         loss = 0
-        print(logits_img_gps.shape, targets_img_gps.shape)
-        img_gps_loss = criterion(logits_img_gps, targets_img_gps)
+        img_gps_loss = criterion(
+            (img_features_view_1, img_features_view_2), gps_features, gps_features_q)
         loss += img_gps_loss
 
         # Backpropagate
