@@ -118,7 +118,6 @@ class GeoCLIP(nn.Module):
             top_k (int): Number of top predictions to return
         """
         image = Image.open(image_path)
-        image = self.image_encoder.preprocess_image(image)
         image = image.to(self.device)
 
         gps_gallery = self.gps_gallery.to(self.device)

@@ -16,8 +16,8 @@ def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch
         optimizer.zero_grad()
 
         # Forward pass
-        img_features_view_1 = model.image_encoder(imgs[0])
-        img_features_view_2 = model.image_encoder(imgs[1])
+        img_features_view_1 = model.image_encoder(imgs[:, 0])
+        img_features_view_2 = model.image_encoder(imgs[:, 1])
         gps_features = model.location_encoder(gps)
 
         gps_features = F.normalize(gps_features, dim=1)
