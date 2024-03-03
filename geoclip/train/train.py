@@ -26,8 +26,12 @@ def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch
         gps_features_q = model.append_gps_queue_features(gps_features, gps)
 
         loss = 0
+        img_features_view_1 = torch.unsqueeze(img_features_view_1, 0)
+        img_features_view_2 = torch.unsqueeze(img_features_view_2, 0)
         img_gps_loss = criterion(
-            (img_features_view_1, img_features_view_2), gps_features, gps_features_q)
+            torch.cat((img_features_view_1, img_features_view_2), dim=0),
+            gps_features,
+            gps_features_q)
         loss += img_gps_loss
 
         # Backpropagate

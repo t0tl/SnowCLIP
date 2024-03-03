@@ -25,8 +25,8 @@ class ImageEncoder(nn.Module):
         return x
 
     def forward(self, x):
-        #pdb.set_trace()
-        x = self.preprocess_image(x)
+        # pdb.set_trace()
+        # x = self.preprocess_image(x)
         x = self.CLIP.get_image_features(pixel_values=x)
         x = self.mlp(x)
         return x
