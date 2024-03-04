@@ -1,10 +1,9 @@
 import torch
 from tqdm import tqdm
 import torch.nn.functional as F
+import wandb
 
 def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch_size, device):
-    print("Starting Epoch", epoch)
-
     bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
 
     targets_img_gps = torch.Tensor([i for i in range(batch_size)]).to(device).double()
@@ -25,15 +24,13 @@ def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch
         # Append Queue
         gps_features_q = model.append_gps_queue_features(gps_features, gps)
 
-        loss = 0
         img_features_view_1 = torch.unsqueeze(img_features_view_1, 0)
         img_features_view_2 = torch.unsqueeze(img_features_view_2, 0)
-        img_gps_loss = criterion(
+        loss = criterion(
             torch.cat((img_features_view_1, img_features_view_2), dim=0),
             gps_features,
             gps_features_q)
-        loss += img_gps_loss
-
+        wandb.log({"i": i, "epoch": epoch, "train_loss": loss})
         # Backpropagate
         loss.backward()
         optimizer.step()
