@@ -9,7 +9,6 @@ from .misc import load_gps_data, file_dir
 
 from PIL import Image
 from torchvision.transforms import ToPILImage
-import pdb
 
 class GeoCLIP(nn.Module):
     def __init__(self, batch_size: int, from_pretrained=True, queue_size=4096, device="cpu"):

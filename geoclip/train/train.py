@@ -3,11 +3,13 @@ from tqdm import tqdm
 import torch.nn.functional as F
 import wandb
 
+@torch.enable_grad
 def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch_size, device):
     bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
 
     targets_img_gps = torch.Tensor([i for i in range(batch_size)]).to(device).double()
 
+    epoch_loss = 0
     for i, (imgs, gps) in bar:
         imgs = imgs.to(device)
         gps = gps.to(device)
@@ -30,13 +32,15 @@ def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch
             torch.cat((img_features_view_1, img_features_view_2), dim=0),
             gps_features,
             gps_features_q)
-        wandb.log({"i": i, "epoch": epoch, "train_loss": loss})
         # Backpropagate
+
         loss.backward()
         optimizer.step()
-
+        batch_loss = loss.item() / batch_size
+        epoch_loss += batch_loss
+        wandb.log({"train_batch_loss": batch_loss})
         # Update the progress bar
         bar.set_description("Epoch {} loss: {:.5f}".format(epoch, loss.item()))
-
+    wandb.log({"epoch": epoch, "train_loss": epoch_loss / len(train_dataloader)})
     # Update the scheduler
     scheduler.step()

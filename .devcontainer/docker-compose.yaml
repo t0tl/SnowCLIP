@@ -8,7 +8,8 @@ services:
       dockerfile: Dockerfile
     container_name: SnowCLIP
     volumes:
-      - /mnt/d/mappilary_street_level:/workspace/mappilary_street_level
+      - /mnt/c/mappilary_street_level:/workspace/mappilary_street_level
+      - /mnt/c/Users/Timothy/Downloads/GSW10k:/workspace/GSW10k
       - ../:/workspace
     ports:
       - "8888:8888"  # Adjust the port mapping as needed
