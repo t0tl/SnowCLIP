@@ -2,12 +2,19 @@ import torch
 from tqdm import tqdm
 import torch.nn.functional as F
 import wandb
+from torch.utils.data import DataLoader
+
 
 @torch.enable_grad
-def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch_size, device):
+def train(train_dataloader: DataLoader,
+        model,
+        criterion: torch.nn.modules.loss._Loss,
+        optimizer: torch.optim.Optimizer,
+        scheduler: torch.optim.lr_scheduler._LRScheduler,
+        epoch: int,
+        batch_size: int,
+        device: str = "cuda:0"):
     bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
-
-    targets_img_gps = torch.Tensor([i for i in range(batch_size)]).to(device).double()
 
     epoch_loss = 0
     for i, (imgs, gps) in bar:
@@ -32,8 +39,8 @@ def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch
             torch.cat((img_features_view_1, img_features_view_2), dim=0),
             gps_features,
             gps_features_q)
-        # Backpropagate
 
+        # Backpropagate
         loss.backward()
         optimizer.step()
         batch_loss = loss.item() / batch_size
@@ -41,6 +48,7 @@ def train(train_dataloader, model, criterion, optimizer, scheduler, epoch, batch
         wandb.log({"train_batch_loss": batch_loss})
         # Update the progress bar
         bar.set_description("Epoch {} loss: {:.5f}".format(epoch, loss.item()))
+
     wandb.log({"epoch": epoch, "train_loss": epoch_loss / len(train_dataloader)})
     # Update the scheduler
     scheduler.step()

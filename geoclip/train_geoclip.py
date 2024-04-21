@@ -1,25 +1,16 @@
 from model import GeoCLIP
-from model import ImageEncoder
-from model import LocationEncoder
 from train import train
-import dataloader
-import os
-from torch import nn
 import torch
 import torch.nn.functional as F
 import numpy as np
 import pandas as pd
-from PIL import Image
 from torchvision import transforms
-import matplotlib.pyplot as plt
 import numpy as np
-import torchvision
 import wandb
-import os
 from datasets import AmsterdamData, GSV10kDataset
 from losses import ContrastiveQueueLoss
-import requests
-from transformers import AutoProcessor, CLIPModel
+from sklearn.model_selection import KFold
+from torch.utils.data import DataLoader, Subset
 # WANDB_MODE="disabled"
 # os.environ['WANDB_MODE'] = 'disabled'
 
@@ -96,21 +87,22 @@ def img_transform():
     ])
     return train_transform_list
 
-EPOCHS = 2
-BATCH_SIZE = 256
+EPOCHS = 6
+BATCH_SIZE = 128
 QUEUE_SIZE = 2048
-
-geo_clip = GeoCLIP(batch_size=BATCH_SIZE, device="cuda:0", queue_size=QUEUE_SIZE)
-geo_clip.to("cuda:0")
-
-
 LEARNING_RATE = 1e-4
 TEMPERATURE = 0.1
 GAMMA = 0.1
 STEP_SIZE = 10
-optim = torch.optim.SGD(geo_clip.parameters(), lr=LEARNING_RATE)
+K_FOLDS = 3
+
+# Load the model from geoclip_fold_0_epoch_4.pth
+# weights = torch.load("finetuned/geoclip_fold_2_epoch_3.pth", map_location="cuda:0")
+
+# remove "_orig_mod.logit_scale" from the keys
+# weights = {k.replace("_orig_mod.", ""): v for k, v in weights.items()}
+
 criterion = ContrastiveQueueLoss(batch_size=BATCH_SIZE, temperature=TEMPERATURE)
-scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=STEP_SIZE, gamma=GAMMA)
 dataset = AmsterdamData(root="/workspace/mappilary_street_level/train_val/",
                         prefix="query/images",
                         data_df=data_df,
@@ -125,10 +117,10 @@ dataset = GSV10kDataset(root="/workspace/GSW10k/dataset/",
 # split dataset into train test
 train_size = int(0.8 * len(dataset))
 test_size = len(dataset) - train_size
-train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+train_dataset, validation_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
 
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True)
+validation_loader = torch.utils.data.DataLoader(validation_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
 run = wandb.init(
     # set the wandb project where this run will be logged
@@ -136,6 +128,7 @@ run = wandb.init(
     
     # track hyperparameters and run metadata
     config={
+    "folds": K_FOLDS,
     "learning_rate": LEARNING_RATE,
     "epochs": EPOCHS,
     "batch_size": BATCH_SIZE,
@@ -145,13 +138,13 @@ run = wandb.init(
     "optimizer": "SGD",
     "scheduler": {"StepLR": {"step_size": STEP_SIZE, "gamma": GAMMA}},
     "loss": {"contrastive_queue_loss": {"temperature": TEMPERATURE}},
-    "augmentation": "RandomResizedCrop, RandomHorizontalFlip, RandomApply, RandomGrayscale",
+    "augmentation": "RandomResizedCrop, RandomHorizontalFlip, RandomApply, RandomGrayscale, ColorJitter",
     }
 )
 
 
 @torch.no_grad()
-def test(loader, model, criterion, optim, scheduler, epoch, batch_size, device="cuda:0"):
+def test(loader, model, criterion, optim, epoch, batch_size, device="cuda:0", test_val="test"):
     epoch_loss = 0
     for i, (imgs, gps) in enumerate(loader):
         optim.zero_grad()
@@ -175,12 +168,31 @@ def test(loader, model, criterion, optim, scheduler, epoch, batch_size, device="
         batch_loss = (loss.item() / batch_size)
         epoch_loss += batch_loss
         wandb.log({"test_batch_loss": batch_loss})
-    wandb.log({"epoch": epoch, "test_loss": epoch_loss / len(loader)})
+    wandb.log({"epoch": epoch, f"{test_val}_loss": epoch_loss / len(loader)})
 
 
-run.watch(models=geo_clip, criterion=criterion, log="all", log_freq=1)
-for epoch in range(EPOCHS):
-    train(train_loader, geo_clip, criterion, optim, scheduler, epoch=epoch+1, batch_size=BATCH_SIZE, device="cuda:0")
-    print("Starting test, epoch:", epoch)
-    test(test_loader, geo_clip, criterion, optim, scheduler, epoch=epoch+1, batch_size=BATCH_SIZE, device="cuda:0")
-wandb.finish()
+kf = KFold(n_splits=K_FOLDS, shuffle=True, random_state=1)
+for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
+    train_loader = DataLoader(Subset(dataset, train_index), batch_size=BATCH_SIZE, shuffle=True)
+    test_loader = DataLoader(Subset(dataset, test_index), batch_size=BATCH_SIZE, shuffle=False)
+
+    geo_clip = GeoCLIP(batch_size=BATCH_SIZE, device="cuda:0", queue_size=QUEUE_SIZE)
+    geo_clip.to("cuda:0")
+    #geo_clip.load_state_dict(weights)
+    geo_clip = torch.compile(geo_clip, mode='max-autotune')
+
+    optim = torch.optim.SGD(geo_clip.parameters(), lr=LEARNING_RATE)
+    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=STEP_SIZE, gamma=GAMMA)
+    run.watch(models=geo_clip, log="all")
+    wandb.log({"fold": fold})
+    for epoch in range(EPOCHS):
+
+        train(train_loader, geo_clip, criterion, optim, scheduler, epoch=epoch+1, batch_size=BATCH_SIZE, device="cuda:0")
+        print("Starting test, epoch:", epoch)
+        # Get the test loss for the fold
+        test(test_loader, geo_clip, criterion, optim, epoch=epoch+1, batch_size=BATCH_SIZE, device="cuda:0", test_val="test")
+        # Get validation loss
+        test(validation_loader, geo_clip, criterion, optim, epoch=epoch+1, batch_size=BATCH_SIZE, device="cuda:0", test_val="val")
+        # Save model
+        torch.save(geo_clip.state_dict(), f"finetuned/geoclip_nn_fold_{fold}_epoch_{epoch}.pth")
+    wandb.finish()

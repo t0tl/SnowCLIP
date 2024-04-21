@@ -53,7 +53,7 @@ class GeoCLIP(nn.Module):
         Args:
             gps (torch.Tensor): GPS tensor of shape (batch_size, 2)
         """
-        #pdb.set_trace()
+
         gps_batch_size = gps.shape[0]
         batch_size = self.batch_size
 
@@ -66,7 +66,7 @@ class GeoCLIP(nn.Module):
         # self.gps_queue.shape = (2, 4096)
         # gps.t().shape = (2, 2)
         self.gps_queue[:, gps_ptr:gps_ptr + gps_batch_size] = gps.t()
-        gps_ptr = (gps_ptr + batch_size) % self.queue_size  # move pointer
+        gps_ptr = (gps_ptr + gps_batch_size) % self.queue_size  # move pointer
         self.gps_queue_ptr[0] = gps_ptr
 
     def append_gps_queue_features(self, gps_features, gps_coords):
@@ -104,9 +104,8 @@ class GeoCLIP(nn.Module):
         
         # Cosine similarity (Image Features & Location Features)
         logits_per_image = logit_scale * (image_features @ location_features.t())
-        logits_per_location = logits_per_image.t()
 
-        return logits_per_image, logits_per_location
+        return logits_per_image
 
     @torch.no_grad()
     def predict(self, image_path, top_k):
@@ -122,7 +121,7 @@ class GeoCLIP(nn.Module):
 
         gps_gallery = self.gps_gallery.to(self.device)
 
-        logits_per_image, logits_per_location = self.forward(image, gps_gallery)
+        logits_per_image = self.forward(image, gps_gallery)
         probs_per_image = logits_per_image.softmax(dim=-1).cpu()
 
         # Get top k prediction
