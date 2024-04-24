@@ -46,7 +46,7 @@ pred_transform_flip = v2.Compose([
 
 EPOCHS = 6
 BATCH_SIZE = 128
-QUEUE_SIZE = 2048
+QUEUE_SIZE = 1024
 LEARNING_RATE = 1e-4
 TEMPERATURE = 0.1
 GAMMA = 0.1
@@ -56,14 +56,14 @@ K_FOLDS = 3
 criterion = ContrastiveQueueLoss(batch_size=BATCH_SIZE, temperature=TEMPERATURE)
 
 # Load the gsv-cities dataset
-df_barcelona = pd.read_csv("/workspace/gsv-cities/Dataframes/Barcelona.csv").sample(2048, random_state=42)
+df_barcelona = pd.read_csv("/workspace/gsv-cities/Dataframes/Barcelona.csv").sample(2048, random_state=42) #ändra directory
 df_lisbon = pd.read_csv("/workspace/gsv-cities/Dataframes/Lisbon.csv").sample(2048, random_state=42)
 #df_madrid = pd.read_csv("/workspace/gsv-cities/Dataframes/Madrid.csv")
 
 df_gsv_cities = pd.concat([df_barcelona, df_lisbon])#, df_madrid])
 
 # Load the dataset
-dataset = GSVCities(root="/workspace/gsv-cities/Images/",
+dataset = GSVCities(root="/workspace/gsv-cities/Images/", #ändra directory
     df=df_gsv_cities,
     # transform=img_transform(),
     # transform_aug=img_augment_transform()
@@ -83,50 +83,36 @@ def train(train_dataloader: DataLoader,
         model,
         train_iter: int,
         criterion: torch.nn.modules.loss._Loss,
-        optimizer: torch.optim.Optimizer,
+        optim: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler._LRScheduler,
         epoch: int,
         batch_size: int,
         device: str = "cuda:0",
         n_aug: int = 2):
     bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
+    targets_img_gps = torch.Tensor([i for i in range(batch_size)]).long().to(device)
 
     epoch_loss = 0
     for i, (imgs, gps) in bar:
-        imgs = imgs.to(device)
+        imgs = aug_train_transform(imgs)
         gps = gps.to(device)
-
-        org_imgs = train_transform(imgs)
-        views = torch.empty((n_aug,) + org_imgs.shape, dtype=torch.float32)
-        views[0] = org_imgs
-        for j in range(1, n_aug):
-            aug_imgs = aug_train_transform(imgs)
-            views[j] = aug_imgs
-
-        optimizer.zero_grad()
-
+        imgs = imgs.to(device) 
+        
         # Forward pass
-        imgs = views.to(device)
-        gps = gps.to(device)
-        img_features_view_1 = model.image_encoder(imgs[0])
-        img_features_view_2 = model.image_encoder(imgs[1])
+        optim.zero_grad()
+
         gps_features = model.location_encoder(gps)
-
-        gps_features = F.normalize(gps_features, dim=1)
-
         # Append Queue
-        gps_features_q = model.append_gps_queue_features(gps_features, gps)
-
-        img_features_view_1 = torch.unsqueeze(img_features_view_1, 0)
-        img_features_view_2 = torch.unsqueeze(img_features_view_2, 0)
+        gps_q = model.append_gps_queue_features(gps_features, gps)
+        
+        logits = model(imgs, gps_q)
         loss = criterion(
-            torch.cat((img_features_view_1, img_features_view_2), dim=0),
-            gps_features,
-            gps_features_q)
-
+            logits,
+            targets_img_gps
+            )
         # Backpropagate
         loss.backward()
-        optimizer.step()
+        optim.step()
         batch_loss = loss.item() / batch_size
         epoch_loss += batch_loss
         wandb.log({"train_batch_loss": batch_loss, "train_iter": train_iter})
@@ -143,38 +129,25 @@ def train(train_dataloader: DataLoader,
 @torch.no_grad()
 def test(loader, model, criterion, test_iter: int, optim, epoch, batch_size, device="cuda:0", test_val="test", n_aug=2):
     epoch_loss = 0
+    targets_img_gps = torch.Tensor([i for i in range(batch_size)]).long().to(device)
+
     for i, (imgs, gps) in enumerate(loader):
-        optim.zero_grad()
-        imgs = imgs.to(device)
+        imgs = aug_train_transform(imgs)
         gps = gps.to(device)
-
-        org_imgs = train_transform(imgs)
-        views = torch.empty((n_aug,) + org_imgs.shape, dtype=torch.float32)
-        views[0] = org_imgs
-        for j in range(1, n_aug):
-            aug_imgs = aug_train_transform(imgs)
-            views[j] = aug_imgs
-
-        optim.zero_grad()
-
+        imgs = imgs.to(device) 
+        
         # Forward pass
-        imgs = views.to(device)
-        gps = gps.to(device)
+        optim.zero_grad()
 
-        img_features_view_1 = model.image_encoder(imgs[0])
-        img_features_view_2 = model.image_encoder(imgs[1])
         gps_features = model.location_encoder(gps)
-        gps_features = F.normalize(gps_features, dim=1)
-
         # Append Queue
-        gps_features_q = model.append_gps_queue_features(gps_features, gps)
-
-        img_features_view_1 = torch.unsqueeze(img_features_view_1, 0)
-        img_features_view_2 = torch.unsqueeze(img_features_view_2, 0)
+        gps_q = model.append_gps_queue_features(gps_features, gps)
+        
+        logits = model(imgs, gps_q)
         loss = criterion(
-            torch.cat((img_features_view_1, img_features_view_2), dim=0),
-            gps_features,
-            gps_features_q)
+            logits,
+            targets_img_gps
+            )
         batch_loss = (loss.item() / batch_size)
         epoch_loss += batch_loss
         wandb.log({"test_batch_loss": batch_loss, "test_iter": test_iter})
@@ -184,10 +157,10 @@ def test(loader, model, criterion, test_iter: int, optim, epoch, batch_size, dev
 
 @torch.no_grad()
 def test_preds(
-    loader, model, optim, device="cuda:0"
+    loader, model, optim, eval_phase: str, device="cuda:0"
 ):
     model.populate_gallery()
-    for i, (imgs, gps) in enumerate(loader):
+    for batch_number, (imgs, gps) in enumerate(loader):
         optim.zero_grad()
         # Make a tensor of 10 views
         views = torch.zeros((10, imgs.shape[0], 3, 224, 224), dtype=torch.float32)
@@ -200,7 +173,7 @@ def test_preds(
         imgs = views.to(device)
         gps = gps.to(device)
 
-        model.eval_predict(imgs, gps)
+        model.eval_predict(imgs, gps, batch_number, eval_phase)
     model.delete_gallery()
 
 
@@ -252,11 +225,11 @@ for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
         print("Starting test, epoch:", epoch)
         # Get the test loss for the fold
         test_iter = test(test_loader, geo_clip, train_iter, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="test")
-        test_preds(test_loader, geo_clip, optim)
+        test_preds(test_loader, geo_clip, optim, eval_phase="test")
         # # Get validation loss
         # test(validation_loader, geo_clip, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="val")
         # # Save model
-        # test_preds(validation_loader, geo_clip, optim)
+        test_preds(validation_loader, geo_clip, optim, eval_phase="val")
 
 
 wandb.finish()

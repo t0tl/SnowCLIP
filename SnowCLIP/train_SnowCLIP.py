@@ -272,6 +272,6 @@ for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
         # Get validation loss
         #val_iter = test(validation_loader, snowCLIP, val_iter, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="val")
         print("Getting prediction metrics on validation set")
-        test_preds(validation_loader, snowCLIP, optim, device="cuda:0", eval_phase="validation")
+        test_preds(validation_loader, snowCLIP, optim, device="cuda:0", eval_phase="val")
     
 wandb.finish()
