@@ -3,6 +3,7 @@ version: '3.8'
 services:
   SnowCLIP:
     image: snowclip:tim
+    shm_size: 16gb   # Set shared memory to 16 gigabyte
     build:
       context: ..
       dockerfile: Dockerfile
@@ -10,6 +11,7 @@ services:
     volumes:
       - /mnt/c/mappilary_street_level:/workspace/mappilary_street_level
       - /mnt/c/Users/Timothy/Downloads/GSW10k:/workspace/GSW10k
+      - /mnt/c/Users/Timothy/Downloads/gsv-cities-2:/workspace/gsv-cities
       - ../:/workspace
     ports:
       - "8888:8888"  # Adjust the port mapping as needed
