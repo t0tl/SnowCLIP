@@ -195,10 +195,10 @@ def test(loader, model, test_iter: int,  criterion, optim, epoch, batch_size, de
 
 @torch.no_grad()
 def test_preds(
-    loader, model, optim, device="cuda:0"
+    loader, model, optim, eval_phase: str, device: str = "cuda:0"
 ):
     model.populate_gallery()
-    for i, (imgs, gps) in enumerate(loader):
+    for batch_number, (imgs, gps) in enumerate(loader):
         optim.zero_grad()
         # Make a tensor of 10 views
         views = torch.zeros((10, imgs.shape[0], 3, 224, 224), dtype=torch.float32)
@@ -206,14 +206,13 @@ def test_preds(
             views[j] = pred_transform(imgs)
 
         for j in range(5, 10):
-            views[j] = pred_transform_flip(imgs)
+            views[j] = pred_transform_flip(views[j-5])
     
         imgs = views.to(device)
         gps = gps.to(device)
 
-        model.eval_predict(imgs, gps)
+        model.eval_predict(imgs, gps, batch_number, eval_phase)
     model.delete_gallery()
-
 
 
 kf = KFold(n_splits=K_FOLDS, shuffle=True, random_state=1)
@@ -230,8 +229,8 @@ for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
     for epoch in range(1, EPOCHS+1):
         run = wandb.init(
             # set the wandb project where this run will be logged
-            project="snowclip",
-            name=f"eval_SnowCLIP_epoch_{epoch}_fold_{fold}_BATCH_SIZE_{BATCH_SIZE}_QUEUE_SIZE_{QUEUE_SIZE}_SUPPORT_SIZE_{SUPPORT_SIZE}",
+            project="eval_snowclip",
+            name=f"epoch_{epoch}_fold_{fold}_BATCH_SIZE_{BATCH_SIZE}_QUEUE_SIZE_{QUEUE_SIZE}_SUPPORT_SIZE_{SUPPORT_SIZE}",
 
             # track hyperparameters and run metadata
             config={
@@ -241,18 +240,18 @@ for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
             "batch_size": BATCH_SIZE,
             "queue_size": QUEUE_SIZE,
             "support_size": SUPPORT_SIZE,
-            "dataset": "amsterdam",
+            "dataset": "gsv-cities",
             "architecture": "SnowCLIP",
             "optimizer": "SGD",
             "scheduler": {"StepLR": {"step_size": STEP_SIZE, "gamma": GAMMA}},
-            "loss": {"contrastive_queue_loss": {"temperature": TEMPERATURE}},
-            "augmentations": "RandomResizedCrop, RandomHorizontalFlip, RandomApply, RandomGrayscale, ColorJitter",
+            "loss": {"SnowCLIPLoss": {"temperature": TEMPERATURE}},
+            #"augmentations": "RandomResizedCrop, RandomHorizontalFlip, RandomApply, RandomGrayscale, ColorJitter",
             },
             reinit=True
         )
         snowCLIP = GeoCLIPSupportSet(support_set_loader, batch_size=BATCH_SIZE, device="cuda:0", queue_size=QUEUE_SIZE, support_size=SUPPORT_SIZE, train_transform=train_transform)
         snowCLIP.to("cuda:0")
-        os.listdir("finetuned")
+        # os.listdir("finetuned")
         weights = torch.load(f"finetuned/SnowCLIP_{fold}_epoch_{epoch}_BATCH_SIZE_{BATCH_SIZE}_QUEUE_SIZE_{QUEUE_SIZE}_SUPPORT_SIZE_{SUPPORT_SIZE}.pth", map_location="cuda:0")
 
         # remove "_orig_mod.logit_scale" from the keys
@@ -262,17 +261,17 @@ for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
 
         optim = torch.optim.SGD(snowCLIP.parameters(), lr=LEARNING_RATE)
         scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=STEP_SIZE, gamma=GAMMA)
-        train_iter = train(train_loader, snowCLIP, train_iter, criterion, optim, scheduler, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0")
+        #train_iter = train(train_loader, snowCLIP, train_iter, criterion, optim, scheduler, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0")
         #print("Saving model")
         #torch.save(snowCLIP.state_dict(), f"finetuned/SnowCLIP_{fold}_epoch_{epoch}_BATCH_SIZE_{BATCH_SIZE}_QUEUE_SIZE_{QUEUE_SIZE}_SUPPORT_SIZE_{SUPPORT_SIZE}.pth")
         #print("Starting test, epoch:", epoch)
         # Get the test loss for the fold
-        test_iter = test(test_loader, snowCLIP, test_iter, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="test")
-        #print("Getting prediction metrics on test set")
-        test_preds(test_loader, snowCLIP, optim, BATCH_SIZE, device="cuda:0")
+        # test_iter = test(test_loader, snowCLIP, test_iter, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="test")
+        print("Getting prediction metrics on test set")
+        test_preds(test_loader, snowCLIP, optim, device="cuda:0", eval_phase="test")
         # Get validation loss
         #val_iter = test(validation_loader, snowCLIP, val_iter, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="val")
         print("Getting prediction metrics on validation set")
-        test_preds(validation_loader, snowCLIP, optim, BATCH_SIZE, device="cuda:0")
+        test_preds(validation_loader, snowCLIP, optim, device="cuda:0", eval_phase="validation")
     
 wandb.finish()

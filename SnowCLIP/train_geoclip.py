@@ -42,7 +42,6 @@ pred_transform = v2.Compose([
 pred_transform_flip = v2.Compose([
     v2.RandomHorizontalFlip(p=1),
     v2.ConvertImageDtype(torch.float32),
-    v2.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 ])
 
 EPOCHS = 6
@@ -196,7 +195,7 @@ def test_preds(
             views[j] = pred_transform(imgs)
 
         for j in range(5, 10):
-            views[j] = pred_transform_flip(imgs)
+            views[j] = pred_transform_flip(views[j-5])
     
         imgs = views.to(device)
         gps = gps.to(device)
