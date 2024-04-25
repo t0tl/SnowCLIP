@@ -12,7 +12,7 @@ services:
       #- /mnt/c/mappilary_street_level:/workspace/mappilary_street_level
       #- /mnt/c/Users/Timothy/Downloads/GSW10k:/workspace/GSW10k
       - /mnt/c/Users/Naifh/code:/workspace/gsv-cities
-      - ../:/workspace
+      #- ../:/workspaces
     ports:
       - "8888:8888" # Adjust the port mapping as needed
     environment:

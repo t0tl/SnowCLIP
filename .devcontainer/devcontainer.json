@@ -2,18 +2,18 @@
 	"name": "SnowCLIP",
 	"dockerComposeFile": "docker-compose.yaml",
 	"initializeCommand": "ls",
-    "service": "SnowCLIP",
-    "workspaceFolder": "/workspace",
-    "shutdownAction": "stopCompose",
-    "customizations": {
-        "vscode": {
-            "extensions": [
+	"service": "SnowCLIP",
+	"workspaceFolder": "/workspaces/SnowCLIP",
+	"shutdownAction": "stopCompose",
+	"customizations": {
+		"vscode": {
+			"extensions": [
 				"ms-toolsai.jupyter",
 				"GitHub.copilot",
 				"ms-python.python",
 				"eamodio.gitlens",
 				"ms-vsliveshare.vsliveshare"
 			]
-        }
-    },
+		}
+	},
 }
