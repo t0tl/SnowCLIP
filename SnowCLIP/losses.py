@@ -56,7 +56,7 @@ class SnowCLIPLoss(nn.Module):
         self.batch_size = batch_size
         self.queue_size = queue_size
 
-    #@torch.compile   
+    @torch.compile   
     def forward(self, V: torch.Tensor, L: torch.Tensor, gps: torch.Tensor, support_set):#: SupportSetDataStructure) -> torch.Tensor:
         '''
         V: torch.Tensor
