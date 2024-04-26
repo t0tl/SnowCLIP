@@ -137,7 +137,8 @@ class SnowCLIPLoss(nn.Module):
         for i in range(emb_list.support_set["gps"].shape[0]):
             lat, lon = emb_list.support_set["gps"][i]
             # NOTE: WIP
-            if distance.distance(gps, (lat, lon)).km > 25:
+            print(gps, (lat, lon))
+            if distance.distance(gps, [float(lat), float(lon)]).km > 25:
                 false_preds[j] = emb_list.support_set["joint_features"][i]
                 j += 1
                 if j >= self.queue_size:

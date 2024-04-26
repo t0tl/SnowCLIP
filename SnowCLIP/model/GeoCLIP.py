@@ -72,6 +72,35 @@ class GeoCLIP(nn.Module):
         gps_ptr = (gps_ptr + gps_batch_size) % self.queue_size  # move pointer
         self.gps_queue_ptr[0] = gps_ptr
 
+    def update_support_set_features(self, gps_coords: torch.Tensor):
+        """
+        Replace the oldest support set features with the new ones
+        
+        Args:
+            img_emb (torch.Tensor): Image embeddings
+            gps_emb (torch.Tensor): GPS embeddings
+            gps_coords (torch.Tensor): GPS coordinates
+        """
+        #print(len(self.gps_queue))
+        gps_batch_size = gps_coords.shape[0]
+        ptr = int(self.gps_queue_ptr)
+        new_ptr_position = ptr + gps_batch_size
+        # See that the batch size is the same for both image and gps
+        
+        if new_ptr_position > self.queue_size:
+
+            # Then we will only be able to update part of the support set
+            remaining_space_ss = self.queue_size - ptr
+            self.gps_queue[:, ptr:] = gps_coords[:remaining_space_ss].t()
+            ptr = (new_ptr_position) % self.queue_size
+            # Update the start of the array with the remaining elements
+            self.gps_queue[:, :ptr] = gps_coords[remaining_space_ss:].t()
+        else:
+            #print(ptr, new_ptr_position)
+            self.gps_queue[:, ptr: new_ptr_position] = gps_coords.t()
+        ptr = (new_ptr_position) % self.queue_size  # move pointer
+        self.gps_queue_ptr[0] = ptr
+
     def append_gps_queue_features(self, gps_coords):
         """ Compute the GPS queue features and append them to the given GPS features."""
 
@@ -83,7 +112,7 @@ class GeoCLIP(nn.Module):
         gps_q = torch.cat([location_queue, gps_coords], dim=0)
 
         # Update GPS queue
-        self._dequeue_and_enqueue(gps_coords)
+        self.update_support_set_features(gps_coords)
 
         return gps_q
                                              

@@ -13,8 +13,10 @@ from datasets import GSVCities
 from torchvision import transforms as v2
 import os
 from tqdm import tqdm
-# WANDB_MODE="disabled"
-# os.environ['WANDB_MODE'] = 'disabled'
+from beartype import beartype
+
+WANDB_MODE="disabled"
+os.environ['WANDB_MODE'] = 'disabled'
 
 aug_train_transform = v2.Compose([
     v2.RandomResizedCrop(224),
@@ -53,17 +55,17 @@ GAMMA = 0.1
 STEP_SIZE = 10
 K_FOLDS = 3
 
-criterion = ContrastiveQueueLoss(batch_size=BATCH_SIZE, temperature=TEMPERATURE)
+criterion = torch.nn.CrossEntropyLoss()
 
 # Load the gsv-cities dataset
-df_barcelona = pd.read_csv("/workspace/gsv-cities/Dataframes/Barcelona.csv").sample(2048, random_state=42) #ändra directory
-df_lisbon = pd.read_csv("/workspace/gsv-cities/Dataframes/Lisbon.csv").sample(2048, random_state=42)
-#df_madrid = pd.read_csv("/workspace/gsv-cities/Dataframes/Madrid.csv")
+df_barcelona = pd.read_csv("/workspaces/SnowCLIP/gsv-cities/Dataframes/Barcelona.csv").sample(2048, random_state=42) #ändra directory
+df_lisbon = pd.read_csv("/workspaces/SnowCLIP/gsv-cities/Dataframes/Lisbon.csv").sample(2048, random_state=42)
+#df_madrid = pd.read_csv("/workspaces/SnowCLIP/gsv-cities/Dataframes/Madrid.csv")
 
 df_gsv_cities = pd.concat([df_barcelona, df_lisbon])#, df_madrid])
 
 # Load the dataset
-dataset = GSVCities(root="/workspace/gsv-cities/Images/", #ändra directory
+dataset = GSVCities(root="/workspaces/SnowCLIP/gsv-cities/Images/", #ändra directory
     df=df_gsv_cities,
     # transform=img_transform(),
     # transform_aug=img_augment_transform()
@@ -79,6 +81,7 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE,
 validation_loader = torch.utils.data.DataLoader(validation_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
 @torch.enable_grad
+@beartype
 def train(train_dataloader: DataLoader,
         model,
         train_iter: int,
@@ -89,11 +92,12 @@ def train(train_dataloader: DataLoader,
         batch_size: int,
         device: str = "cuda:0",
         n_aug: int = 2):
+
     bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
-    targets_img_gps = torch.Tensor([i for i in range(batch_size)]).long().to(device)
 
     epoch_loss = 0
     for i, (imgs, gps) in bar:
+        targets_img_gps = torch.Tensor([i for i in range(imgs.shape[0])]).long().to(device)
         imgs = aug_train_transform(imgs)
         gps = gps.to(device)
         imgs = imgs.to(device) 
@@ -101,9 +105,9 @@ def train(train_dataloader: DataLoader,
         # Forward pass
         optim.zero_grad()
 
-        gps_features = model.location_encoder(gps)
         # Append Queue
-        gps_q = model.append_gps_queue_features(gps_features, gps)
+        #print("gps shape ", gps.shape)
+        gps_q = model.append_gps_queue_features( gps)
         
         logits = model(imgs, gps_q)
         loss = criterion(
@@ -127,11 +131,13 @@ def train(train_dataloader: DataLoader,
 
 
 @torch.no_grad()
-def test(loader, model, criterion, test_iter: int, optim, epoch, batch_size, device="cuda:0", test_val="test", n_aug=2):
+@beartype
+def test(loader, model, test_iter: int, criterion: torch.nn.CrossEntropyLoss, optim, epoch, batch_size, device="cuda:0", test_val="test", n_aug=2):
     epoch_loss = 0
-    targets_img_gps = torch.Tensor([i for i in range(batch_size)]).long().to(device)
 
-    for i, (imgs, gps) in enumerate(loader):
+    bar = tqdm(enumerate(loader), total=len(loader))
+    for i, (imgs, gps) in bar:
+        targets_img_gps = torch.Tensor([i for i in range(imgs.shape[0])]).long().to(device)
         imgs = aug_train_transform(imgs)
         gps = gps.to(device)
         imgs = imgs.to(device) 
@@ -139,9 +145,9 @@ def test(loader, model, criterion, test_iter: int, optim, epoch, batch_size, dev
         # Forward pass
         optim.zero_grad()
 
-        gps_features = model.location_encoder(gps)
         # Append Queue
-        gps_q = model.append_gps_queue_features(gps_features, gps)
+        #print("gps shape ", gps.shape)
+        gps_q = model.append_gps_queue_features( gps)
         
         logits = model(imgs, gps_q)
         loss = criterion(
@@ -156,6 +162,7 @@ def test(loader, model, criterion, test_iter: int, optim, epoch, batch_size, dev
     return test_iter
 
 @torch.no_grad()
+@beartype
 def test_preds(
     loader, model, optim, eval_phase: str, device="cuda:0"
 ):
@@ -187,7 +194,7 @@ for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
 
     run = wandb.init(
         # set the wandb project where this run will be logged
-        project="snowclip",
+        project="eval_snowclip",
         name=f"GeoCLIP_base_fold_{fold}_batch_{BATCH_SIZE}_queue_{QUEUE_SIZE}",
         
         # track hyperparameters and run metadata
@@ -214,22 +221,21 @@ for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
     geo_clip = GeoCLIP(batch_size=BATCH_SIZE, queue_size=QUEUE_SIZE, device="cuda:0")
     geo_clip.to("cuda:0")
     #geo_clip.load_state_dict(weights)
-    geo_clip = torch.compile(geo_clip, mode='max-autotune')
+    #geo_clip = torch.compile(geo_clip, mode='max-autotune', )
 
     optim = torch.optim.SGD(geo_clip.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=STEP_SIZE, gamma=GAMMA)
     run.watch(models=geo_clip, log="all")
-    for epoch in range(1, EPOCHS+1):
-        train_iter = train(train_loader, geo_clip, train_iter, criterion, optim, scheduler, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0")
-        torch.save(geo_clip.state_dict(), f"finetuned/geoclip_two_cities_{fold}_epoch_{epoch}.pth")
-        print("Starting test, epoch:", epoch)
-        # Get the test loss for the fold
-        test_iter = test(test_loader, geo_clip, train_iter, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="test")
-        test_preds(test_loader, geo_clip, optim, eval_phase="test")
-        # # Get validation loss
-        # test(validation_loader, geo_clip, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="val")
-        # # Save model
-        test_preds(validation_loader, geo_clip, optim, eval_phase="val")
-
+    #for epoch in range(1, EPOCHS+1):
+    # train_iter = train(train_loader, geo_clip, train_iter, criterion, optim, scheduler, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0")
+    # torch.save(geo_clip.state_dict(), f"finetuned/geoclip_two_cities_{fold}_epoch_{epoch}.pth")
+    print("Starting test, epoch:", 1)
+    # Get the test loss for the fold
+    test_iter = test(test_loader, geo_clip, train_iter, criterion, optim, epoch=1, batch_size=BATCH_SIZE, device="cuda:0", test_val="test")
+    test_preds(test_loader, geo_clip, optim, eval_phase="test")
+    # # Get validation loss
+    # test(validation_loader, geo_clip, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="val")
+    # # Save model
+    test_preds(validation_loader, geo_clip, optim, eval_phase="val")
 
 wandb.finish()

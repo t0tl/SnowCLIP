@@ -9,8 +9,8 @@ services:
       dockerfile: Dockerfile
     container_name: SnowCLIP
     volumes:
-      #- /mnt/c/mappilary_street_level:/workspace/mappilary_street_level
-      #- /mnt/c/Users/Timothy/Downloads/GSW10k:/workspace/GSW10k
+      #- /mnt/c/mappilary_street_level:/workspaces/SnowCLIP/mappilary_street_level
+      #- /mnt/c/Users/Timothy/Downloads/GSW10k:/workspaces/SnowCLIP/GSW10k
       - ../:/workspaces/SnowCLIP
       - /mnt/c/Users/Timothy/Downloads/gsv-cities-2:/workspaces/SnowCLIP/gsv-cities
     ports:

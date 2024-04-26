@@ -1,4 +1,7 @@
 mappilary_street_level
+gsv-cities
+GSW10k
+.vscode
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

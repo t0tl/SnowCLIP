@@ -12,17 +12,17 @@ from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 import os
-# WANDB_MODE="disabled"
-# os.environ['WANDB_MODE'] = 'disabled'
+WANDB_MODE="disabled"
+os.environ['WANDB_MODE'] = 'disabled'
 
-df_gsv10k = pd.read_csv('/workspace/GSW10k/dataset/coords.csv', header=None)
-df_gsv10k.columns = ['lat', 'lon']
-df_gsv10k
+# df_gsv10k = pd.read_csv('/workspaces/SnowCLIP/GSW10k/dataset/coords.csv', header=None)
+# df_gsv10k.columns = ['lat', 'lon']
+# df_gsv10k
 
 # Load the gsv-cities dataset
-df_barcelona = pd.read_csv("/workspace/gsv-cities/Dataframes/Barcelona.csv").sample(2048, random_state=42)
-df_lisbon = pd.read_csv("/workspace/gsv-cities/Dataframes/Lisbon.csv").sample(2048, random_state=42)
-#df_madrid = pd.read_csv("/workspace/gsv-cities/Dataframes/Madrid.csv")
+df_barcelona = pd.read_csv("/workspaces/SnowCLIP/gsv-cities/Dataframes/Barcelona.csv").sample(2048, random_state=42)
+df_lisbon = pd.read_csv("/workspaces/SnowCLIP/gsv-cities/Dataframes/Lisbon.csv").sample(2048, random_state=42)
+#df_madrid = pd.read_csv("/workspaces/SnowCLIP/gsv-cities/Dataframes/Madrid.csv")
 
 df_gsv_cities = pd.concat([df_barcelona, df_lisbon])#, df_madrid])
 
@@ -67,16 +67,16 @@ K_FOLDS = 3
 SUPPORT_SIZE = 1024
 
 criterion = SnowCLIPLoss(BATCH_SIZE, QUEUE_SIZE, temperature=TEMPERATURE)
-# dataset = AmsterdamData(root="/workspace/mappilary_street_level/train_val/",
+# dataset = AmsterdamData(root="/workspaces/SnowCLIP/mappilary_street_level/train_val/",
 #                         prefix="query/images",
 #                         data_df=data_df,
 #                         transform=img_transform(),
 #                         transform_aug=img_augment_transform())
-# dataset = GSV10kDataset(root="/workspace/GSW10k/dataset/",
+# dataset = GSV10kDataset(root="/workspaces/SnowCLIP/GSW10k/dataset/",
 #                         df=df_gsv10k,
 #                         transform=img_transform(),
 #                         transform_aug=img_augment_transform())
-dataset = GSVCities(root="/workspace/gsv-cities/Images/",
+dataset = GSVCities(root="/workspaces/SnowCLIP/gsv-cities/Images/",
     df=df_gsv_cities,
     # transform=img_transform(),
     # transform_aug=img_augment_transform()
@@ -254,10 +254,10 @@ for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
         # os.listdir("finetuned")
         weights = torch.load(f"finetuned/SnowCLIP_{fold}_epoch_{epoch}_BATCH_SIZE_{BATCH_SIZE}_QUEUE_SIZE_{QUEUE_SIZE}_SUPPORT_SIZE_{SUPPORT_SIZE}.pth", map_location="cuda:0")
 
-        # remove "_orig_mod.logit_scale" from the keys
-        weights = {k.replace("_orig_mod.", ""): v for k, v in weights.items()}
-        snowCLIP.load_state_dict(weights)
-        snowCLIP = torch.compile(snowCLIP, mode="reduce-overhead")
+    # remove "_orig_mod.logit_scale" from the keys
+    #weights = {k.replace("_orig_mod.", ""): v for k, v in weights.items()}
+    #snowCLIP.load_state_dict(weights)
+    snowCLIP = torch.compile(snowCLIP, mode="reduce-overhead")
 
         optim = torch.optim.SGD(snowCLIP.parameters(), lr=LEARNING_RATE)
         scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=STEP_SIZE, gamma=GAMMA)
