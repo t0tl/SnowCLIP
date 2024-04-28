@@ -12,7 +12,8 @@ services:
       #- /mnt/c/mappilary_street_level:/workspaces/SnowCLIP/mappilary_street_level
       #- /mnt/c/Users/Timothy/Downloads/GSW10k:/workspaces/SnowCLIP/GSW10k
       - ../:/workspaces/SnowCLIP
-      - /mnt/c/Users/Timothy/Downloads/gsv-cities-2:/workspaces/SnowCLIP/gsv-cities
+      #- /mnt/c/Users/Timothy/Downloads/gsv-cities-2:/workspaces/SnowCLIP/gsv-cities
+      - /mnt/c/Users/Naifh/code:/workspaces/SnowCLIP/gsv-cities
     ports:
       - "8888:8888" # Adjust the port mapping as needed
     environment:

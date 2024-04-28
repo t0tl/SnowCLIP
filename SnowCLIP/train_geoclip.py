@@ -47,8 +47,8 @@ pred_transform_flip = v2.Compose([
 ])
 
 EPOCHS = 6
-BATCH_SIZE = 128
-QUEUE_SIZE = 1024
+BATCH_SIZE = 16
+QUEUE_SIZE = 128
 LEARNING_RATE = 1e-4
 TEMPERATURE = 0.1
 GAMMA = 0.1
@@ -185,57 +185,65 @@ def test_preds(
 
 
 kf = KFold(n_splits=K_FOLDS, shuffle=True, random_state=1)
+for j in range(6):
+    BATCH_SIZE = 16
+    BATCH_SIZE = BATCH_SIZE * (2**(j))
 
-for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
-    train_loader = DataLoader(Subset(dataset, train_index), batch_size=BATCH_SIZE, shuffle=True)
-    test_loader = DataLoader(Subset(dataset, test_index), batch_size=BATCH_SIZE, shuffle=True)
-    train_iter = 0
-    test_iter = 0
 
-    # Load the model
-    # weights = torch.load(f"finetuned/geoclip_fold_{fold}_epoch_{epoch}.pth", map_location="cuda:0")
+    
+    for i in range(6):
+        QUEUE_SIZE = 128
+        QUEUE_SIZE = QUEUE_SIZE * (2 **(i))
+        for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
+            train_loader = DataLoader(Subset(dataset, train_index), batch_size=BATCH_SIZE, shuffle=True)
+            test_loader = DataLoader(Subset(dataset, test_index), batch_size=BATCH_SIZE, shuffle=True)
+            train_iter = 0
+            test_iter = 0
 
-    # remove "_orig_mod.logit_scale" from the keys
-    # weights = {k.replace("_orig_mod.", ""): v for k, v in weights.items()}
-    geo_clip = GeoCLIP(batch_size=BATCH_SIZE, queue_size=QUEUE_SIZE, device="cuda:0")
-    geo_clip.to("cuda:0")
-    #geo_clip.load_state_dict(weights)
-    #geo_clip = torch.compile(geo_clip, mode='max-autotune', )
+            # Load the model
+            # weights = torch.load(f"finetuned/geoclip_fold_{fold}_epoch_{epoch}.pth", map_location="cuda:0")
 
-    optim = torch.optim.SGD(geo_clip.parameters(), lr=LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=STEP_SIZE, gamma=GAMMA)
-    for epoch in range(1, EPOCHS+1):
-        run = wandb.init(
-            # set the wandb project where this run will be logged
-            project="eval_snowclip",
-            name=f"GeoCLIP_epoch_{epoch}_fold_{fold}_batch_{BATCH_SIZE}_queue_{QUEUE_SIZE}",
-            
-            # track hyperparameters and run metadata
-            config={
-            "folds": K_FOLDS,
-            "learning_rate": LEARNING_RATE,
-            "epochs": EPOCHS,
-            "batch_size": BATCH_SIZE,
-            "queue_size": QUEUE_SIZE,
-            "dataset": "GSVCities",
-            "architecture": "geoclip",
-            "optimizer": "SGD",
-            "scheduler": {"StepLR": {"step_size": STEP_SIZE, "gamma": GAMMA}},
-            "loss": {"contrastive_queue_loss": {"temperature": TEMPERATURE}},
-            "augmentation": "RandomResizedCrop, RandomHorizontalFlip, RandomApply, RandomGrayscale, ColorJitter",
-            },
-            reinit=True
-        )
-        run.watch(models=geo_clip, log="all")
-        train_iter = train(train_loader, geo_clip, train_iter, criterion, optim, scheduler, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0")
-        torch.save(geo_clip.state_dict(), f"finetuned/geoclip_two_cities_{fold}_epoch_{epoch}.pth")
+            # remove "_orig_mod.logit_scale" from the keys
+            # weights = {k.replace("_orig_mod.", ""): v for k, v in weights.items()}
+            geo_clip = GeoCLIP(batch_size=BATCH_SIZE, queue_size=QUEUE_SIZE, device="cuda:0")
+            geo_clip.to("cuda:0")
+            #geo_clip.load_state_dict(weights)
+            #geo_clip = torch.compile(geo_clip, mode='max-autotune', )
 
-        print("Starting test, epoch:", epoch)
-        test_iter = test(test_loader, geo_clip, train_iter, criterion, optim, epoch=1, batch_size=BATCH_SIZE, device="cuda:0", test_val="test")
-        print("Getting test metrics, epoch:", epoch)
-        test_preds(test_loader, geo_clip, optim, eval_phase="test")
+            optim = torch.optim.SGD(geo_clip.parameters(), lr=LEARNING_RATE)
+            scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=STEP_SIZE, gamma=GAMMA)
+            for epoch in range(1, EPOCHS+1):
+                run = wandb.init(
+                    # set the wandb project where this run will be logged
+                    project="eval_snowclip",
+                    name=f"GeoCLIP_epoch_{epoch}_fold_{fold}_batch_{BATCH_SIZE}_queue_{QUEUE_SIZE}",
+                    
+                    # track hyperparameters and run metadata
+                    config={
+                    "folds": K_FOLDS,
+                    "learning_rate": LEARNING_RATE,
+                    "epochs": EPOCHS,
+                    "batch_size": BATCH_SIZE,
+                    "queue_size": QUEUE_SIZE,
+                    "dataset": "GSVCities",
+                    "architecture": "geoclip",
+                    "optimizer": "SGD",
+                    "scheduler": {"StepLR": {"step_size": STEP_SIZE, "gamma": GAMMA}},
+                    "loss": {"contrastive_queue_loss": {"temperature": TEMPERATURE}},
+                    "augmentation": "RandomResizedCrop, RandomHorizontalFlip, RandomApply, RandomGrayscale, ColorJitter",
+                    },
+                    reinit=True
+                )
+                run.watch(models=geo_clip, log="all")
+                train_iter = train(train_loader, geo_clip, train_iter, criterion, optim, scheduler, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0")
+                torch.save(geo_clip.state_dict(), f"finetuned/geoclip_two_cities_{fold}_epoch_{epoch}_BATCH_SIZE{BATCH_SIZE}_QUEUE_SIZE_{QUEUE_SIZE}.pth")
 
-        print("Getting val metrics, epoch:", epoch)
-        test_preds(validation_loader, geo_clip, optim, eval_phase="val")
+                print("Starting test, epoch:", epoch)
+                test_iter = test(test_loader, geo_clip, train_iter, criterion, optim, epoch=1, batch_size=BATCH_SIZE, device="cuda:0", test_val="test")
+                print("Getting test metrics, epoch:", epoch)
+                test_preds(test_loader, geo_clip, optim, eval_phase="test")
+
+                print("Getting val metrics, epoch:", epoch)
+                test_preds(validation_loader, geo_clip, optim, eval_phase="val")
 
 wandb.finish()
