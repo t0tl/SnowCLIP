@@ -317,6 +317,48 @@ class GeoCLIP(nn.Module):
             f"{eval_phase}_batch_emb_mean_street_acc": batch_emb_mean_street_acc
         })
 
+
+    def eval_logit_mean(self, logits_per_img, gps, batch_number: int, eval_phase: str):
+        mean_logits = logits_per_img.mean(dim=0)
+        mean_probs = mean_logits.softmax(dim=1).cpu()
+        top_pred = torch.argmax(mean_probs, dim=1)
+        top_pred_gps = self.gps_gallery[top_pred].cpu()
+        batch_error = 0
+        batch_city_accuracy = 0
+        batch_street_accuracy = 0
+        for i in range(top_pred_gps.shape[0]):
+            error = distance.distance(top_pred_gps[i], gps[i]).km
+            batch_error += error
+            correct_city = False
+            correct_street = False
+
+            if error < 25:
+                correct_city = True
+                batch_city_accuracy += 1
+
+            if error < 1:
+                correct_street = True
+                batch_street_accuracy += 1
+
+            # Log raw data
+            wandb.log({
+                f"{eval_phase}_logit_mean_error_distance": error,
+                f"{eval_phase}_gps": gps[i],
+                f"{eval_phase}_logit_mean_avg_pred": top_pred_gps[i],
+                f"{eval_phase}_logit_mean_correct_city": correct_city,
+                f"{eval_phase}_logit_mean_correct_street": correct_street
+            })
+        
+        batch_error /= top_pred_gps.shape[0]
+        batch_city_accuracy /= top_pred_gps.shape[0]
+        batch_street_accuracy /= top_pred_gps.shape[0]
+        wandb.log({
+            f"{eval_phase}_batch_number": batch_number,
+            f"{eval_phase}_batch_logit_mean_error_distance": batch_error,
+            f"{eval_phase}_batch_logit_mean_correct_city_acc": batch_city_accuracy,
+            f"{eval_phase}_batch_logit_mean_correct_street_acc": batch_street_accuracy
+    })
+
     @torch.no_grad()
     def eval_predict(self, images, gps, batch_number: int, eval_phase: str):
         """ Given an image, predict the top k GPS coordinates
@@ -338,9 +380,7 @@ class GeoCLIP(nn.Module):
         logits_per_img = logit_scale * (all_img_embs @ self.gallery_embs.T)
 
         # (n_aug, batch_size, gallery_size)
-        probs_per_image = logits_per_img.softmax(dim=0).cpu()
+        self.eval_logit_mean(logits_per_img, gps, batch_number, eval_phase)
 
+        probs_per_image = logits_per_img.softmax(dim=0).cpu()
         self.eval_sum(probs_per_image, gps, batch_number, eval_phase)
-        top_pred = torch.argmax(probs_per_image, dim=2)
-        self.eval_mean(top_pred, gps, batch_number, eval_phase)
-        self.eval_emb_mean(top_pred, gps, batch_number, eval_phase)

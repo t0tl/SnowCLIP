@@ -7,7 +7,7 @@ from torchvision.transforms import v2
 import numpy as np
 import wandb
 from datasets import GSV10kDataset, GSVCities
-from losses import SnowCLIPLoss
+from losses import SnowCLIPLoss, SnowCLRLoss
 from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
@@ -66,7 +66,8 @@ STEP_SIZE = 10
 K_FOLDS = 3
 SUPPORT_SIZE = 1024
 
-criterion = SnowCLIPLoss(BATCH_SIZE, QUEUE_SIZE, temperature=TEMPERATURE)
+# criterion = SnowCLIPLoss(BATCH_SIZE, QUEUE_SIZE, temperature=TEMPERATURE)
+criterion = SnowCLRLoss(BATCH_SIZE, QUEUE_SIZE, temperature=TEMPERATURE)
 # dataset = AmsterdamData(root="/workspaces/SnowCLIP/mappilary_street_level/train_val/",
 #                         prefix="query/images",
 #                         data_df=data_df,
@@ -254,24 +255,24 @@ for fold, (train_index, test_index) in enumerate(kf.split(train_dataset)):
         # os.listdir("finetuned")
         weights = torch.load(f"finetuned/SnowCLIP_{fold}_epoch_{epoch}_BATCH_SIZE_{BATCH_SIZE}_QUEUE_SIZE_{QUEUE_SIZE}_SUPPORT_SIZE_{SUPPORT_SIZE}.pth", map_location="cuda:0")
 
-    # remove "_orig_mod.logit_scale" from the keys
-    #weights = {k.replace("_orig_mod.", ""): v for k, v in weights.items()}
-    #snowCLIP.load_state_dict(weights)
-    snowCLIP = torch.compile(snowCLIP, mode="reduce-overhead")
+        # remove "_orig_mod.logit_scale" from the keys
+        #weights = {k.replace("_orig_mod.", ""): v for k, v in weights.items()}
+        #snowCLIP.load_state_dict(weights)
+        snowCLIP = torch.compile(snowCLIP, mode="reduce-overhead")
 
         optim = torch.optim.SGD(snowCLIP.parameters(), lr=LEARNING_RATE)
         scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=STEP_SIZE, gamma=GAMMA)
-        #train_iter = train(train_loader, snowCLIP, train_iter, criterion, optim, scheduler, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0")
+        train_iter = train(train_loader, snowCLIP, train_iter, criterion, optim, scheduler, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0")
         #print("Saving model")
         #torch.save(snowCLIP.state_dict(), f"finetuned/SnowCLIP_{fold}_epoch_{epoch}_BATCH_SIZE_{BATCH_SIZE}_QUEUE_SIZE_{QUEUE_SIZE}_SUPPORT_SIZE_{SUPPORT_SIZE}.pth")
         #print("Starting test, epoch:", epoch)
         # Get the test loss for the fold
         # test_iter = test(test_loader, snowCLIP, test_iter, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="test")
-        print("Getting prediction metrics on test set")
-        test_preds(test_loader, snowCLIP, optim, device="cuda:0", eval_phase="test")
+        #print("Getting prediction metrics on test set")
+        #test_preds(test_loader, snowCLIP, optim, device="cuda:0", eval_phase="test")
         # Get validation loss
         #val_iter = test(validation_loader, snowCLIP, val_iter, criterion, optim, epoch=epoch, batch_size=BATCH_SIZE, device="cuda:0", test_val="val")
-        print("Getting prediction metrics on validation set")
-        test_preds(validation_loader, snowCLIP, optim, device="cuda:0", eval_phase="val")
+        #print("Getting prediction metrics on validation set")
+        #test_preds(validation_loader, snowCLIP, optim, device="cuda:0", eval_phase="val")
     
 wandb.finish()
